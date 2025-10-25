@@ -1,8 +1,8 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml">
+<!DOCTYPE html>
+<html>
 <head>
-    <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Media Capture Log</title>
     <style>
         * {
@@ -227,8 +227,8 @@
         <!-- Configuration Section -->
         <div class="config-section" id="config-section">
             <strong>⚙️ Setup Google Apps Script URL:</strong>
-            <input type="text" id="script-url" placeholder="Paste your Google Apps Script Web App URL here"/>
-            <button onclick="saveScriptUrl()">Save URL And Load Data</button>
+            <input type="text" id="script-url" placeholder="Paste your Google Apps Script Web App URL here">
+            <button onclick="saveScriptUrl()">Save URL & Load Data</button>
         </div>
 
         <div class="stats" id="stats" style="display:none;">
@@ -248,9 +248,9 @@
 
         <div class="controls" id="controls" style="display:none;">
             <div class="filter-buttons">
-                <button class="active" onclick="filterItems('all')">All</button>
-                <button onclick="filterItems('audio')">🎙️ Audio</button>
-                <button onclick="filterItems('photo')">📸 Photos</button>
+                <button class="active" data-filter="all" onclick="filterItems('all', this)">All</button>
+                <button data-filter="audio" onclick="filterItems('audio', this)">🎙️ Audio</button>
+                <button data-filter="photo" onclick="filterItems('photo', this)">📸 Photos</button>
             </div>
             <button class="refresh-btn" onclick="loadData()">🔄 Refresh</button>
         </div>
@@ -302,11 +302,15 @@
             document.getElementById('content').style.display = 'none';
 
             try {
-                const response = await fetch(scriptUrl + '?action=getList');
+                // Use GET request to avoid CORS preflight
+                const response = await fetch(scriptUrl + '?action=getList', {
+                    method: 'GET'
+                });
+                
                 const result = await response.json();
 
                 if (result.success) {
-                    allItems = result.items;
+                    allItems = result.items || [];
                     updateStats();
                     displayItems();
                     document.getElementById('loading').style.display = 'none';
@@ -317,7 +321,8 @@
                     document.getElementById('loading').innerHTML = '<p style="color: red;">Error: ' + result.message + '</p>';
                 }
             } catch (err) {
-                document.getElementById('loading').innerHTML = '<p style="color: red;">Failed to load data: ' + err.message + '</p>';
+                document.getElementById('loading').innerHTML = '<p style="color: red;">Failed to load data: ' + err.message + '<br><br>Make sure you deployed the Google Apps Script correctly with "Anyone" access.</p>';
+                console.error('Load error:', err);
             }
         }
 
@@ -330,14 +335,14 @@
             document.getElementById('photo-count').textContent = photoCount;
         }
 
-        function filterItems(type) {
+        function filterItems(type, button) {
             currentFilter = type;
             
             // Update active button
             document.querySelectorAll('.filter-buttons button').forEach(btn => {
                 btn.classList.remove('active');
             });
-            event.target.classList.add('active');
+            button.classList.add('active');
             
             displayItems();
         }
@@ -369,9 +374,13 @@
                 
                 let contentHTML = '';
                 if (item.type === 'audio') {
-                    contentHTML = `<audio controls src="${item.url}"></audio>`;
+                    // Use direct URL for audio
+                    const audioUrl = item.directUrl || item.url;
+                    contentHTML = `<audio controls><source src="${audioUrl}" type="audio/webm"></audio>`;
                 } else if (item.type === 'photo') {
-                    contentHTML = `<img src="${item.url}" alt="Captured photo">`;
+                    // Use direct URL for images
+                    const imgUrl = item.directUrl || item.url;
+                    contentHTML = `<img src="${imgUrl}" alt="Captured photo" loading="lazy">`;
                 }
                 
                 itemDiv.innerHTML = `
@@ -384,7 +393,7 @@
                     </div>
                     <div class="item-actions">
                         <button class="download-btn" onclick="downloadItem('${item.url}', '${item.fileName}')">Download</button>
-                        <button class="delete-btn" onclick="deleteItem('${item.fileId}')">Delete</button>
+                        <button class="delete-btn" onclick="confirmDelete('${item.fileId}', '${item.fileName}')">Delete</button>
                     </div>
                 `;
                 
@@ -393,23 +402,22 @@
         }
 
         function downloadItem(url, fileName) {
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            a.target = '_blank';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            window.open(url, '_blank');
+        }
+
+        function confirmDelete(fileId, fileName) {
+            if (confirm('Are you sure you want to delete "' + fileName + '"?')) {
+                deleteItem(fileId);
+            }
         }
 
         async function deleteItem(fileId) {
-            if (!confirm('Are you sure you want to delete this item?')) {
-                return;
-            }
-
             try {
                 const response = await fetch(scriptUrl, {
                     method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify({
                         action: 'delete',
                         fileId: fileId
@@ -426,6 +434,7 @@
                 }
             } catch (err) {
                 alert('Failed to delete item: ' + err.message);
+                console.error('Delete error:', err);
             }
         }
     </script>
